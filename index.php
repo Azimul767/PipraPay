@@ -1088,6 +1088,32 @@
                                         }
                                     }
 
+                                    // Return customers to the merchant website as soon as
+                                    // payment is complete. Prefer the checkout return URL and
+                                    // fall back to the brand's configured website.
+                                    if ($transactionRow['status'] === 'completed' && !isset($_GET['receipt'])) {
+                                        $redirectUrl = $finalUrl;
+
+                                        if ($redirectUrl === '' || $redirectUrl === '--') {
+                                            $brandWebsite = trim($response_brand['response'][0]['support_website'] ?? '');
+                                            if ($brandWebsite !== '' && $brandWebsite !== '--') {
+                                                $redirectUrl = addQueryParams($brandWebsite, [
+                                                    'pp_status' => $transactionRow['status'],
+                                                    'transaction_ref' => $transactionRow['ref'],
+                                                ]);
+                                            }
+                                        }
+
+                                        $redirectScheme = strtolower((string)parse_url($redirectUrl, PHP_URL_SCHEME));
+                                        if (
+                                            filter_var($redirectUrl, FILTER_VALIDATE_URL) !== false
+                                            && in_array($redirectScheme, ['http', 'https'], true)
+                                        ) {
+                                            header('Location: ' . $redirectUrl, true, 303);
+                                            exit;
+                                        }
+                                    }
+
                                     $response_faq = json_decode(getData($db_prefix.'faq',' WHERE brand_id ="'.$response_brand['response'][0]['brand_id'].'" AND status ="active" ORDER BY 1 DESC'),true);
                                     
                                     /* Clean Transaction Info */
