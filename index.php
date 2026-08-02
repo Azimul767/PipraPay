@@ -1088,10 +1088,10 @@
                                         }
                                     }
 
-                                    // Return customers to the merchant website as soon as
-                                    // payment is complete. Prefer the checkout return URL and
-                                    // fall back to the brand's configured website.
-                                    if ($transactionRow['status'] === 'completed' && !isset($_GET['receipt'])) {
+                                    // Prefer the checkout return URL and fall back to the
+                                    // brand's configured website after a completed payment.
+                                    $redirectUrl = '--';
+                                    if ($transactionRow['status'] === 'completed') {
                                         $redirectUrl = $finalUrl;
 
                                         if ($redirectUrl === '' || $redirectUrl === '--') {
@@ -1106,11 +1106,10 @@
 
                                         $redirectScheme = strtolower((string)parse_url($redirectUrl, PHP_URL_SCHEME));
                                         if (
-                                            filter_var($redirectUrl, FILTER_VALIDATE_URL) !== false
-                                            && in_array($redirectScheme, ['http', 'https'], true)
+                                            filter_var($redirectUrl, FILTER_VALIDATE_URL) === false
+                                            || !in_array($redirectScheme, ['http', 'https'], true)
                                         ) {
-                                            header('Location: ' . $redirectUrl, true, 303);
-                                            exit;
+                                            $redirectUrl = '--';
                                         }
                                     }
 
@@ -1133,6 +1132,7 @@
                                         'local_net_amount'       => money_round($transactionRow['local_net_amount']),
                                         'local_currency'          => $transactionRow['local_currency'],
                                         'return_url'          => $finalUrl,
+                                        'redirect_url'        => $redirectUrl,
                                         'created_date'          => $transactionRow['created_date'],
                                         'updated_date'          => $transactionRow['updated_date'],
                                         'status'          => $transactionRow['status'],
