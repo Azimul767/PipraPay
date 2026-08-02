@@ -996,6 +996,75 @@
         return sendEmailNotification($notifyEmail, $notifyName, $subject, $htmlBody);
     }
 
+    function sendCompletedTransactionAdminNotification(string $transactionRef): array {
+        global $db_prefix;
+
+        $transactionRef = trim($transactionRef);
+        if ($transactionRef === '') {
+            return ['status' => false, 'message' => 'Transaction reference is required.'];
+        }
+
+        $transactionResponse = json_decode(getData(
+            $db_prefix.'transaction',
+            'WHERE ref = :ref AND status = :status LIMIT 1',
+            '* FROM',
+            [':ref' => $transactionRef, ':status' => 'completed']
+        ), true);
+
+        if (($transactionResponse['status'] ?? false) !== true || empty($transactionResponse['response'][0])) {
+            return ['status' => false, 'message' => 'Completed transaction was not found.'];
+        }
+
+        $transaction = $transactionResponse['response'][0];
+        $customer = json_decode($transaction['customer_info'] ?? '', true);
+        $customer = is_array($customer) ? $customer : [];
+
+        $gatewayName = $transaction['gateway_id'] ?? 'N/A';
+        if (!empty($transaction['gateway_id']) && !empty($transaction['brand_id'])) {
+            $gatewayResponse = json_decode(getData(
+                $db_prefix.'gateways',
+                'WHERE gateway_id = :gateway_id AND brand_id = :brand_id LIMIT 1',
+                '* FROM',
+                [
+                    ':gateway_id' => $transaction['gateway_id'],
+                    ':brand_id' => $transaction['brand_id'],
+                ]
+            ), true);
+
+            if (($gatewayResponse['status'] ?? false) === true && !empty($gatewayResponse['response'][0])) {
+                $gatewayName = $gatewayResponse['response'][0]['display']
+                    ?? $gatewayResponse['response'][0]['name']
+                    ?? $gatewayName;
+            }
+        }
+
+        $escape = static function ($value): string {
+            return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+        };
+
+        $amount = money_round($transaction['amount'] ?? '0', 2);
+        $currency = $transaction['currency'] ?? '';
+        $subject = 'Payment completed: ' . $transactionRef;
+        $htmlBody = '<h2>Payment completed</h2>'
+            . '<p>A transaction has been completed successfully.</p>'
+            . '<table cellpadding="6" cellspacing="0" border="0">'
+            . '<tr><td><strong>Reference</strong></td><td>' . $escape($transactionRef) . '</td></tr>'
+            . '<tr><td><strong>Transaction ID</strong></td><td>' . $escape($transaction['trx_id'] ?? 'N/A') . '</td></tr>'
+            . '<tr><td><strong>Customer</strong></td><td>' . $escape($customer['name'] ?? 'N/A') . '</td></tr>'
+            . '<tr><td><strong>Email</strong></td><td>' . $escape($customer['email'] ?? 'N/A') . '</td></tr>'
+            . '<tr><td><strong>Gateway</strong></td><td>' . $escape($gatewayName) . '</td></tr>'
+            . '<tr><td><strong>Amount</strong></td><td>' . $escape($amount . ' ' . $currency) . '</td></tr>'
+            . '<tr><td><strong>Status</strong></td><td>Completed</td></tr>'
+            . '</table>';
+
+        $result = sendAdminNotificationEmail($subject, $htmlBody);
+        if (($result['status'] ?? false) !== true) {
+            error_log('[PipraPay] Admin transaction email failed for ' . $transactionRef . ': ' . ($result['message'] ?? 'Unknown error'));
+        }
+
+        return $result;
+    }
+
     function senderWhitelist(?string $sender = null, ?string $providerKey = null, string $mode = 'provider', ?string $providerName = null) {
         $providers = [
             'bkash' => [
@@ -2145,6 +2214,8 @@
                 $condition = 'id ="'.$response_transaciton['response'][0]['id'].'"'; 
 
                 updateData($db_prefix.'transaction', $columns, $values, $condition);
+
+                sendCompletedTransactionAdminNotification($response_transaciton['response'][0]['ref']);
 
                 $params = [ ':ref' => $response_transaciton['response'][0]['ref'], ':status' => 'completed' ];
 

@@ -1854,6 +1854,8 @@
 
                                                     updateData($db_prefix.'transaction', $columns, $values, $condition);
 
+                                                    sendCompletedTransactionAdminNotification($row['ref']);
+
 
                                                     $metadata = json_decode($row['metadata'], true) ?: [];
 
